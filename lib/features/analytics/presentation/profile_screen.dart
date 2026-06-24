@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,7 +6,7 @@ import 'package:gymsetlogger/shared/database/database.dart';
 import 'package:gymsetlogger/shared/database/database_provider.dart';
 import 'package:gymsetlogger/shared/utils/date_helper.dart';
 import 'package:gymsetlogger/shared/utils/android_storage_helper.dart';
-import 'package:csv/csv.dart';
+import 'package:excel/excel.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
 
@@ -49,8 +48,8 @@ class ProfileScreen extends ConsumerWidget {
             const Divider(color: Color(0xFF252525), height: 32),
             _buildMenuItem(
               icon: Icons.file_download_outlined,
-              title: 'Export CSV',
-              subtitle: 'Export workout history',
+              title: 'Export XLSX',
+              subtitle: 'Export workout history to Excel',
               onTap: () => _exportCSV(context, db),
             ),
             _buildMenuItem(
@@ -107,40 +106,74 @@ class ProfileScreen extends ConsumerWidget {
   Future<void> _exportCSV(BuildContext context, AppDatabase db) async {
     try {
       final sessions = await db.allSessions();
-      final rows = <List<dynamic>>[
-        ['Date', 'Exercise', 'Set', 'Weight(kg)', 'Reps', 'Est1RM', 'RestTime(s)', 'Volume'],
-      ];
+      final exercises = await db.allExercises();
+      final exerciseMap = {for (final e in exercises) e.id: e};
 
+      // Create Excel workbook
+      final excel = Excel.createExcel();
+      excel.rename(excel.getDefaultSheet()!, 'Workouts');
+
+      // Header row
+      final sheet = excel['Workouts'];
+      final headers = ['Date', 'Exercise', 'Muscle Group', 'Type', 'Set', 'Weight(kg)', 'Reps', 'Est1RM', 'RestTime(s)', 'Volume', 'Is PR'];
+      for (var i = 0; i < headers.length; i++) {
+        sheet.cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 0)).value = TextCellValue(headers[i]);
+        sheet.cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 0)).cellStyle = CellStyle(
+          bold: true,
+          backgroundColorHex: ExcelColor.fromHexString('#C8FF00'),
+          fontColorHex: ExcelColor.fromHexString('#0F0F0F'),
+        );
+      }
+
+      // Data rows
+      int rowIndex = 1;
       for (final session in sessions) {
         final sets = await db.setsForSession(session.id);
-        final exercises = await db.allExercises();
-        final exerciseMap = {for (final e in exercises) e.id: e};
-
         for (final s in sets) {
           final exercise = exerciseMap[s.exerciseId];
           final est1RM = s.weightKg * (1 + s.reps / 30);
-          rows.add([
+          final volume = s.weightKg * s.reps;
+
+          final rowData = [
             DateHelper.formatDate(session.startedAt),
             exercise?.name ?? 'Unknown',
+            exercise?.muscleGroup ?? '',
+            exercise?.type ?? '',
             s.setNumber,
             s.weightKg,
             s.reps,
-            est1RM.toStringAsFixed(1),
+            double.parse(est1RM.toStringAsFixed(1)),
             s.restSeconds ?? '',
-            (s.weightKg * s.reps).toStringAsFixed(0),
-          ]);
+            volume.toStringAsFixed(0),
+            s.isPr == 1 ? 'YES' : '',
+          ];
+
+          for (var i = 0; i < rowData.length; i++) {
+            final value = rowData[i];
+            if (value is int) {
+              sheet.cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: rowIndex)).value = IntCellValue(value);
+            } else if (value is double) {
+              sheet.cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: rowIndex)).value = DoubleCellValue(value);
+            } else {
+              sheet.cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: rowIndex)).value = TextCellValue(value.toString());
+            }
+          }
+          rowIndex++;
         }
       }
 
-      final csv = const ListToCsvConverter().convert(rows);
+      // Save to bytes
+      final fileBytes = excel.save();
+      if (fileBytes == null) throw Exception('Failed to generate Excel file');
+
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final fileName = 'gymlog_$timestamp.csv';
-      final csvBytes = utf8.encode(csv);
+      final fileName = 'gymlog_$timestamp.xlsx';
 
       // Save to Downloads via native MediaStore API
       final savedPath = await AndroidStorageHelper.saveToDownloads(
         fileName: fileName,
-        bytes: csvBytes,
+        bytes: fileBytes,
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       );
 
       if (context.mounted) {
@@ -152,11 +185,10 @@ class ProfileScreen extends ConsumerWidget {
             ),
           );
         } else {
-          // Fallback: save to app directory
           final dir = await getExternalStorageDirectory();
           if (dir != null) {
             final file = File('${dir.path}/$fileName');
-            await file.writeAsString(csv);
+            await file.writeAsBytes(fileBytes);
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text('Saved: ${file.path}'),
