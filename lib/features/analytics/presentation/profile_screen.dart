@@ -1,10 +1,12 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gymsetlogger/shared/database/database.dart';
 import 'package:gymsetlogger/shared/database/database_provider.dart';
 import 'package:gymsetlogger/shared/utils/date_helper.dart';
+import 'package:gymsetlogger/shared/utils/android_storage_helper.dart';
 import 'package:csv/csv.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
@@ -133,30 +135,38 @@ class ProfileScreen extends ConsumerWidget {
       final csv = const ListToCsvConverter().convert(rows);
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final fileName = 'gymlog_$timestamp.csv';
+      final csvBytes = utf8.encode(csv);
 
-      // Try Downloads folder first, fallback to app external storage
-      Directory? dir;
-      try {
-        dir = await getDownloadsDirectory();
-      } catch (_) {}
-      dir ??= await getExternalStorageDirectory();
-      dir ??= await getTemporaryDirectory();
-
-      final file = File('${dir.path}/$fileName');
-      await file.writeAsString(csv);
+      // Save to Downloads via native MediaStore API
+      final savedPath = await AndroidStorageHelper.saveToDownloads(
+        fileName: fileName,
+        bytes: csvBytes,
+      );
 
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Saved to: ${file.path}'),
-            duration: const Duration(seconds: 3),
-            action: SnackBarAction(
-              label: 'OPEN',
-              textColor: const Color(0xFFC8FF00),
-              onPressed: () {},
+        if (savedPath != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Saved to Downloads/$fileName'),
+              duration: const Duration(seconds: 3),
             ),
-          ),
-        );
+          );
+        } else {
+          // Fallback: save to app directory
+          final dir = await getExternalStorageDirectory();
+          if (dir != null) {
+            final file = File('${dir.path}/$fileName');
+            await file.writeAsString(csv);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Saved: ${file.path}'),
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          } else {
+            throw Exception('Cannot access storage');
+          }
+        }
       }
     } catch (e) {
       if (context.mounted) {
