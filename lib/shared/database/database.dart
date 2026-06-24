@@ -47,6 +47,14 @@ class AppDatabase extends _$AppDatabase {
   Future<int> insertExercise(ExercisesCompanion exercise) =>
       into(exercises).insert(exercise);
 
+  Future<void> deleteExercise(int exerciseId) {
+    return (delete(exercises)..where((t) => t.id.equals(exerciseId))).go();
+  }
+
+  Future<void> updateExercise(int exerciseId, ExercisesCompanion data) {
+    return (update(exercises)..where((t) => t.id.equals(exerciseId))).write(data);
+  }
+
   // --- Workout Session Queries ---
   Future<int> createSession() async {
     final id = await into(workoutSessions).insert(
