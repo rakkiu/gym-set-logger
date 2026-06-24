@@ -6,7 +6,6 @@ import 'package:gymsetlogger/shared/database/database.dart';
 import 'package:gymsetlogger/shared/database/database_provider.dart';
 import 'package:gymsetlogger/shared/utils/date_helper.dart';
 import 'package:csv/csv.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
 
@@ -132,13 +131,33 @@ class ProfileScreen extends ConsumerWidget {
       }
 
       final csv = const ListToCsvConverter().convert(rows);
-      final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/gymlog_export.csv');
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final fileName = 'gymlog_$timestamp.csv';
+
+      // Try Downloads folder first, fallback to app external storage
+      Directory? dir;
+      try {
+        dir = await getDownloadsDirectory();
+      } catch (_) {}
+      dir ??= await getExternalStorageDirectory();
+      dir ??= await getTemporaryDirectory();
+
+      final file = File('${dir.path}/$fileName');
       await file.writeAsString(csv);
 
-      await SharePlus.instance.share(
-        ShareParams(files: [XFile(file.path)], text: 'GymLog Export'),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Saved to: ${file.path}'),
+            duration: const Duration(seconds: 3),
+            action: SnackBarAction(
+              label: 'OPEN',
+              textColor: const Color(0xFFC8FF00),
+              onPressed: () {},
+            ),
+          ),
+        );
+      }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
