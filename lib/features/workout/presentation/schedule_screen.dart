@@ -198,11 +198,17 @@ class _DayPickerSheetState extends ConsumerState<_DayPickerSheet> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 16,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
           Text(
             widget.existingDay != null ? 'EDIT DAY' : 'ADD DAY',
             style: const TextStyle(
@@ -296,7 +302,8 @@ class _DayPickerSheetState extends ConsumerState<_DayPickerSheet> {
             ),
           ),
           const SizedBox(height: 16),
-        ],
+          ],
+        ),
       ),
     );
   }

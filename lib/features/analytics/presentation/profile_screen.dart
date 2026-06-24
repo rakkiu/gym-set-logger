@@ -123,36 +123,38 @@ class ProfileScreen extends ConsumerWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text('EXPORT XLSX',
-                  style: TextStyle(
-                    color: Color(0xFFC8FF00),
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  )),
-            ),
-            ...options.map((option) {
-              final (label, start, end) = option;
-              return ListTile(
-                leading: Icon(_getExportIcon(label), color: const Color(0xFFC8FF00)),
-                title: Text(label, style: const TextStyle(color: Color(0xFFF0F0F0))),
-                subtitle: Text(
-                  '${DateHelper.formatShort(start)} - ${DateHelper.formatShort(end.subtract(const Duration(days: 1)))}',
-                  style: const TextStyle(color: Color(0xFF888888), fontSize: 12),
-                ),
-                trailing: const Icon(Icons.chevron_right, color: Color(0xFF888888)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _exportXLSX(context, db, start, end);
-                },
-              );
-            }),
-            const SizedBox(height: 8),
-          ],
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('EXPORT XLSX',
+                    style: TextStyle(
+                      color: Color(0xFFC8FF00),
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    )),
+              ),
+              ...options.map((option) {
+                final (label, start, end) = option;
+                return ListTile(
+                  leading: Icon(_getExportIcon(label), color: const Color(0xFFC8FF00)),
+                  title: Text(label, style: const TextStyle(color: Color(0xFFF0F0F0))),
+                  subtitle: Text(
+                    '${DateHelper.formatShort(start)} - ${DateHelper.formatShort(end.subtract(const Duration(days: 1)))}',
+                    style: const TextStyle(color: Color(0xFF888888), fontSize: 12),
+                  ),
+                  trailing: const Icon(Icons.chevron_right, color: Color(0xFF888888)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _exportXLSX(context, db, start, end);
+                  },
+                );
+              }),
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
       ),
     );
