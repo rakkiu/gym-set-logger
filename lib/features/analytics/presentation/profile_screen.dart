@@ -50,7 +50,7 @@ class ProfileScreen extends ConsumerWidget {
               icon: Icons.file_download_outlined,
               title: 'Export XLSX',
               subtitle: 'Export workout history to Excel',
-              onTap: () => _exportCSV(context, db),
+              onTap: () => _showExportOptions(context, db),
             ),
             _buildMenuItem(
               icon: Icons.backup_outlined,
@@ -103,17 +103,95 @@ class ProfileScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _exportCSV(BuildContext context, AppDatabase db) async {
+  void _showExportOptions(BuildContext context, AppDatabase db) {
+    final now = DateTime.now();
+    final today = DateHelper.startOfDay(now);
+
+    final options = [
+      ('Today', today, today.add(const Duration(days: 1))),
+      ('This Week', today.subtract(Duration(days: today.weekday - 1)),
+          today.subtract(Duration(days: today.weekday - 1)).add(const Duration(days: 7))),
+      ('This Month', DateTime(now.year, now.month, 1), DateTime(now.year, now.month + 1, 1)),
+      ('This Year', DateTime(now.year, 1, 1), DateTime(now.year + 1, 1, 1)),
+      ('All Time', DateTime(2020), DateTime(2100)),
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('EXPORT XLSX',
+                  style: TextStyle(
+                    color: Color(0xFFC8FF00),
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  )),
+            ),
+            ...options.map((option) {
+              final (label, start, end) = option;
+              return ListTile(
+                leading: Icon(_getExportIcon(label), color: const Color(0xFFC8FF00)),
+                title: Text(label, style: const TextStyle(color: Color(0xFFF0F0F0))),
+                subtitle: Text(
+                  '${DateHelper.formatShort(start)} - ${DateHelper.formatShort(end.subtract(const Duration(days: 1)))}',
+                  style: const TextStyle(color: Color(0xFF888888), fontSize: 12),
+                ),
+                trailing: const Icon(Icons.chevron_right, color: Color(0xFF888888)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _exportXLSX(context, db, start, end);
+                },
+              );
+            }),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  IconData _getExportIcon(String label) {
+    switch (label) {
+      case 'Today': return Icons.today;
+      case 'This Week': return Icons.view_week_outlined;
+      case 'This Month': return Icons.calendar_month;
+      case 'This Year': return Icons.calendar_today;
+      case 'All Time': return Icons.all_inclusive;
+      default: return Icons.file_download;
+    }
+  }
+
+  Future<void> _exportXLSX(BuildContext context, AppDatabase db, DateTime start, DateTime end) async {
     try {
-      final sessions = await db.allSessions();
+      final allSessions = await db.allSessions();
+      final sessions = allSessions.where((s) {
+        final sessionDate = DateHelper.startOfDay(s.startedAt);
+        return !sessionDate.isBefore(start) && sessionDate.isBefore(end);
+      }).toList();
+
+      if (sessions.isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No workouts in this period')),
+          );
+        }
+        return;
+      }
+
       final exercises = await db.allExercises();
       final exerciseMap = {for (final e in exercises) e.id: e};
 
-      // Create Excel workbook
       final excel = Excel.createExcel();
       excel.rename(excel.getDefaultSheet()!, 'Workouts');
 
-      // Header row
       final sheet = excel['Workouts'];
       final headers = ['Date', 'Exercise', 'Muscle Group', 'Type', 'Set', 'Weight(kg)', 'Reps', 'Est1RM', 'RestTime(s)', 'Volume', 'Is PR'];
       for (var i = 0; i < headers.length; i++) {
@@ -125,7 +203,6 @@ class ProfileScreen extends ConsumerWidget {
         );
       }
 
-      // Data rows
       int rowIndex = 1;
       for (final session in sessions) {
         final sets = await db.setsForSession(session.id);
@@ -162,14 +239,12 @@ class ProfileScreen extends ConsumerWidget {
         }
       }
 
-      // Save to bytes
       final fileBytes = excel.save();
       if (fileBytes == null) throw Exception('Failed to generate Excel file');
 
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final fileName = 'gymlog_$timestamp.xlsx';
 
-      // Save to Downloads via native MediaStore API
       final savedPath = await AndroidStorageHelper.saveToDownloads(
         fileName: fileName,
         bytes: fileBytes,
